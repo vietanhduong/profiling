@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/golang/glog"
+	"golang.org/x/sys/unix"
 )
 
 func ParseProcMap(pid int) ([]*ProcMap, error) {
@@ -73,6 +74,14 @@ func FindPerfMapNStgid(pid int) int {
 		return -1
 	}
 	return nstgid
+}
+
+func IsPerfMap(path string) bool {
+	return strings.HasSuffix(path, ".map")
+}
+
+func IsValidPerfMap(path string) bool {
+	return IsPerfMap(path) && unix.Access(path, unix.R_OK) == nil
 }
 
 func parseProcMap(f *os.File, pid int) ([]*ProcMap, error) {
