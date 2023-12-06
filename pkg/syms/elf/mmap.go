@@ -14,7 +14,6 @@ type MMapedFile struct {
 
 	fpath       string
 	f           *os.File
-	err         error
 	stringCache map[int]string
 }
 
@@ -79,15 +78,18 @@ func (mf *MMapedFile) Close() {
 	mf.Sections = nil
 }
 
+func (mf *MMapedFile) IsDead() bool {
+	_, err := os.Stat(mf.fpath)
+	return err != nil
+}
+
 func (mf *MMapedFile) open() error {
 	if mf.f != nil {
 		return nil
 	}
-	if mf.err != nil {
-		return fmt.Errorf("mmap file already failed: %w", mf.err)
-	}
-	mf.f, mf.err = open(mf.fpath)
-	return mf.err
+	var err error
+	mf.f, err = open(mf.fpath)
+	return err
 }
 
 func (mf *MMapedFile) findSectionByType(styp elf.SectionType) *elf.SectionHeader {

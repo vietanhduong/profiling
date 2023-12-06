@@ -65,7 +65,9 @@ func (f *MMapedFile) NewSymbolTable(opts *SymbolOptions) (*SymbolTable, error) {
 	return ret, nil
 }
 
-func (s *SymbolTable) IsDead() bool { return s.File.err != nil }
+func (s *SymbolTable) IsDead() bool { return s.File.IsDead() }
+
+func (s *SymbolTable) Size() int { return len(s.Index.Names) }
 
 func (s *SymbolTable) Resolve(addr uint64) string {
 	if len(s.Index.Names) == 0 {
