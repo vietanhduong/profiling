@@ -37,6 +37,7 @@ func NewMMapedFile(fpath string) (*MMapedFile, error) {
 	for i := range e.Sections {
 		this.Sections = append(this.Sections, e.Sections[i].SectionHeader)
 	}
+
 	this.FileHeader = e.FileHeader
 	runtime.SetFinalizer(this, (*MMapedFile).Close)
 	return this, nil
@@ -65,6 +66,15 @@ func (mf *MMapedFile) GetSectionData(name string) (*SectionData, error) {
 		return nil, fmt.Errorf("os file read at: %w", err)
 	}
 	return &SectionData{data, section}, nil
+}
+
+func (mf *MMapedFile) FindSectionByType(typ elf.SectionType) *elf.SectionHeader {
+	for _, s := range mf.Sections {
+		if s.Type == typ {
+			return &s
+		}
+	}
+	return nil
 }
 
 func (mf *MMapedFile) FilePath() string { return mf.fpath }

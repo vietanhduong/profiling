@@ -7,16 +7,6 @@ import (
 	"github.com/vietanhduong/profiling/pkg/syms/gosym"
 )
 
-type FallbackResolver interface {
-	Resolve(addr uint64) string
-	Size() int
-}
-
-type emptyFallback struct{}
-
-func (*emptyFallback) Resolve(uint64) string { return "" }
-func (*emptyFallback) Size() int             { return 0 }
-
 type GoTable struct {
 	Index gosym.FlatFuncIndex
 
@@ -33,6 +23,11 @@ func (g *GoTable) Resolve(addr uint64) string {
 		return symbol
 	}
 	return g.fallback.Resolve(addr)
+}
+
+func (g *GoTable) Cleanup() {
+	g.File.Close()
+	g.fallback.Cleanup()
 }
 
 func (g *GoTable) Size() int { return len(g.Index.Name) + g.fallback.Size() }

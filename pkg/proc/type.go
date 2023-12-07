@@ -1,30 +1,48 @@
 package proc
 
-import "fmt"
+import (
+	"fmt"
 
-type ProcMap struct {
-	Name       string
+	"golang.org/x/sys/unix"
+)
+
+type Map struct {
+	Pathname   string
 	StartAddr  uint64
 	EndAddr    uint64
 	FileOffset uint
-	DevMajor   uint64
-	DevMinor   uint64
+	DevMajor   uint32
+	DevMinor   uint32
 	Inode      uint64
 	Memfd      bool
 }
 
-func (pm *ProcMap) String() string {
-	if pm == nil {
+func (m *Map) String() string {
+	if m == nil {
 		return ""
 	}
 
 	return fmt.Sprintf("%s 0x%016x-0x%016x 0x%016x %x:%x %d %t",
-		pm.Name,
-		pm.StartAddr,
-		pm.EndAddr,
-		pm.FileOffset,
-		pm.DevMajor,
-		pm.DevMinor,
-		pm.Inode,
-		pm.Memfd)
+		m.Pathname,
+		m.StartAddr,
+		m.EndAddr,
+		m.FileOffset,
+		m.DevMajor,
+		m.DevMinor,
+		m.Inode,
+		m.Memfd)
+}
+
+type File struct {
+	Dev   uint64
+	Inode uint64
+	Path  string
+}
+
+func (m *Map) File() File {
+	return File{
+		Inode: m.Inode,
+		Path:  m.Pathname,
+		Dev:   unix.Mkdev(m.DevMajor, m.DevMinor),
+	}
 }

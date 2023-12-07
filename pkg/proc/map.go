@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func ParseProcMap(pid int) ([]*ProcMap, error) {
+func ParseProcMap(pid int) ([]*Map, error) {
 	mapfile := HostProcPath(fmt.Sprintf("%d", pid), "maps")
 	f, err := os.Open(mapfile)
 	if err != nil {
@@ -28,12 +28,12 @@ func ParseProcMap(pid int) ([]*ProcMap, error) {
 	}
 
 	if mappath := FindPerfMapPath(pid); mappath != "" {
-		ret = append(ret, &ProcMap{Name: mappath})
+		ret = append(ret, &Map{Pathname: mappath})
 	}
 
 	if mappath := fmt.Sprintf("/tmp/perf-%d.map", pid); len(mappath) < 4096 &&
 		!containsPath(ret, mappath) {
-		ret = append(ret, &ProcMap{Name: mappath})
+		ret = append(ret, &Map{Pathname: mappath})
 	}
 	return ret, nil
 }
@@ -84,10 +84,10 @@ func IsValidPerfMap(path string) bool {
 	return IsPerfMap(path) && unix.Access(path, unix.R_OK) == nil
 }
 
-func parseProcMap(f *os.File, pid int) ([]*ProcMap, error) {
-	var ret []*ProcMap
+func parseProcMap(f *os.File, pid int) ([]*Map, error) {
+	var ret []*Map
 	for {
-		var m ProcMap
+		var m Map
 		var perm, buf string
 		n, _ := fmt.Fscanf(f, "%x-%x %4s %x %x:%x %d %s\n",
 			&m.StartAddr,
@@ -105,22 +105,22 @@ func parseProcMap(f *os.File, pid int) ([]*ProcMap, error) {
 		if len(perm) != 4 || perm[2] != 'x' { // executable only
 			continue
 		}
-		m.Name = strings.TrimSpace(buf)
+		m.Pathname = strings.TrimSpace(buf)
 
-		if isFileBacked(m.Name) {
+		if isFileBacked(m.Pathname) {
 			continue
 		}
 
-		var resolved string
-		if strings.Contains(m.Name, "/memfd:") {
-			if resolved = findMemFdPath(pid, m.Inode); resolved != "" {
+		var pathname string
+		if strings.Contains(m.Pathname, "/memfd:") {
+			if pathname = findMemFdPath(pid, m.Inode); pathname != "" {
 				m.Memfd = true
 			}
 		}
 		// TODO(vietanhduong): handle zip and apk
 
-		if resolved != "" {
-			m.Name = resolved
+		if pathname != "" {
+			m.Pathname = pathname
 		}
 		ret = append(ret, &m)
 	}
@@ -159,9 +159,9 @@ func findMemFdPath(pid int, inode uint64) string {
 	return ret
 }
 
-func containsPath(maps []*ProcMap, path string) bool {
+func containsPath(maps []*Map, path string) bool {
 	for _, m := range maps {
-		if path == m.Name {
+		if path == m.Pathname {
 			return true
 		}
 	}

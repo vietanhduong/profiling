@@ -8,7 +8,7 @@ require (
 	github.com/golang/glog v1.2.0
 	github.com/ianlancetaylor/demangle v0.0.0-20231023195312-e2daf7ba7156
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	golang.org/x/sys v0.14.1-0.20231108175955-e4099bfacb8c
 )
 

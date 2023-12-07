@@ -35,7 +35,7 @@ func (mf *MMapedFile) getSymbols(styp elf.SectionType, opts *SymbolOptions) (*se
 }
 
 func (mf *MMapedFile) getSymbols64(styp elf.SectionType, opts *SymbolOptions) (*sectionSymbols, error) {
-	section := mf.findSectionByType(styp)
+	section := mf.FindSectionByType(styp)
 	if section == nil {
 		return nil, fmt.Errorf("not found section %s", styp.String())
 	}
@@ -82,7 +82,7 @@ func (mf *MMapedFile) getSymbols64(styp elf.SectionType, opts *SymbolOptions) (*
 }
 
 func (mf *MMapedFile) getSymbols32(styp elf.SectionType, opts *SymbolOptions) (*sectionSymbols, error) {
-	section := mf.findSectionByType(styp)
+	section := mf.FindSectionByType(styp)
 	if section == nil {
 		return nil, fmt.Errorf("not found section %s", styp.String())
 	}

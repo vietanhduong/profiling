@@ -78,13 +78,9 @@ func (s *Stat) IsStale() bool {
 func (s *Stat) Reset() { s.inode, _ = getinode(s.procfs) }
 
 func getinode(procfs string) (uint64, error) {
-	info, err := os.Stat(procfs)
-	if err != nil {
-		return 0, fmt.Errorf("os stat %s: %w", procfs, err)
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, fmt.Errorf("not a syscall.Stat_t")
+	var stat unix.Stat_t
+	if err := unix.Stat(procfs, &stat); err != nil {
+		return 0, fmt.Errorf("unix stat %s: %w", procfs, err)
 	}
 	return stat.Ino, nil
 }

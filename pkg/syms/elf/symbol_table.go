@@ -79,6 +79,8 @@ func (s *SymbolTable) Resolve(addr uint64) string {
 	return ""
 }
 
+func (s *SymbolTable) Cleanup() { s.File.Close() }
+
 func (s *SymbolTable) symbolName(index int) string {
 	secidx := s.Index.Names[index].SectionIndex()
 	header := &s.Index.Links[secidx]
