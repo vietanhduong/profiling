@@ -3,15 +3,13 @@ package syms
 import (
 	"fmt"
 	"os"
-	"unsafe"
+	"runtime"
 
 	"github.com/golang/glog"
 	"github.com/vietanhduong/profiling/pkg/proc"
 	"github.com/vietanhduong/profiling/pkg/syms/elf"
+	"golang.org/x/sys/unix"
 )
-
-//#include <string.h>
-import "C"
 
 type vdsoStatus struct {
 	image string
@@ -20,10 +18,11 @@ type vdsoStatus struct {
 
 var vstatus *vdsoStatus
 
-func CreateVDSOResolver(pid int) (SymbolTable, error) {
+func buildvDSOResolver() (SymbolTable, error) {
 	if vstatus == nil {
 		vstatus = &vdsoStatus{}
-		vstatus.image, vstatus.err = findVDSO(pid)
+		vstatus.image, vstatus.err = findVDSO()
+		runtime.SetFinalizer(vstatus, (*vdsoStatus).Cleanup)
 		if vstatus.err != nil {
 			return nil, vstatus.err
 		}
@@ -37,13 +36,14 @@ func CreateVDSOResolver(pid int) (SymbolTable, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open mmaped filed %s: %w, image, err", vstatus.image, err)
 	}
-
+	glog.V(5).Infof("Loaded vDSO (image=%s)", vstatus.image)
 	return createSymbolTable(mf, &elf.SymbolOptions{
 		DemangleOpts: DemangleFull.ToOptions(),
 	}), nil
 }
 
-func findVDSO(pid int) (string, error) {
+func findVDSO() (string, error) {
+	pid := unix.Getpid()
 	maps, err := proc.ParseProcMap(pid)
 	if err != nil {
 		return "", fmt.Errorf("parse proc map pid %d: %w", pid, err)
@@ -63,13 +63,27 @@ func buildVDSOImage(procmap *proc.Map, pid int) string {
 	}
 
 	size := procmap.EndAddr - procmap.StartAddr
-	buf := make([]byte, 0, size)
-
-	C.memcpy(unsafe.Pointer(&buf[0]), unsafe.Pointer(&procmap.StartAddr), C.size_t(size))
-
-	tmpfile, err := os.CreateTemp("", fmt.Sprintf("profile_%d_vdso_image_XXXXXX", pid))
+	procmem := proc.HostProcPath(fmt.Sprintf("%d/mem", pid))
+	mem, err := os.OpenFile(procmem, os.O_RDONLY, 0)
 	if err != nil {
-		glog.Warning("Failed to create vsdo temp file: %v", err)
+		glog.Warningf("Build vDSO Image: Failed to open file %s: %v", procmem, err)
+		return ""
+	}
+	defer mem.Close()
+
+	if _, err = mem.Seek(int64(procmap.StartAddr), 0); err != nil {
+		glog.Warningf("Build vDSO Image: Failed to seek to address: %v", err)
+		return ""
+	}
+
+	buf := make([]byte, size)
+	if _, err = mem.Read(buf); err != nil {
+		glog.Warningf("Build vDSO Image: Failed read mem: %v", err)
+		return ""
+	}
+	tmpfile, err := os.Create(fmt.Sprintf("/tmp/profile_%d_vdso_image", pid))
+	if err != nil {
+		glog.Warningf("Build vDSO Image: Failed to create vsdo temp file: %v", err)
 		return ""
 	}
 	defer tmpfile.Close()
@@ -78,4 +92,13 @@ func buildVDSOImage(procmap *proc.Map, pid int) string {
 		glog.Errorf("failed to write to vDSO image: %v", err)
 	}
 	return tmpfile.Name()
+}
+
+func (s *vdsoStatus) Cleanup() {
+	if s == nil || s.image == "" {
+		return
+	}
+	glog.Infof("Remove vDSO image: %s", s.image)
+	os.Remove(s.image)
+	s.err = nil
 }

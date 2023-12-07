@@ -9,7 +9,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/vietanhduong/profiling/pkg/proc"
 	"github.com/vietanhduong/profiling/pkg/syms/elf"
-	"golang.org/x/sys/unix"
 )
 
 type ProcModule struct {
@@ -32,13 +31,20 @@ func NewProcModule(name string, procmap *proc.Map, path *modulePath, opts *Symbo
 		path:    path,
 		opts:    opts,
 		procmap: procmap,
-		typ:     getElfType(path),
+		typ:     getElfType(name, path),
 		table:   &emptyTable{},
+		base:    0,
 	}
 	return this
 }
 
-func (m *ProcModule) Cleanup() { m.table.Cleanup(); m.path.Close() }
+func (m *ProcModule) Cleanup() {
+	m.table.Cleanup()
+	m.path.Close()
+	if m.typ == VDSO {
+		vstatus.Cleanup()
+	}
+}
 
 func (m *ProcModule) Resolve(addr uint64) string {
 	if !m.loaded {
@@ -54,26 +60,26 @@ func (m *ProcModule) Resolve(addr uint64) string {
 		return ""
 	}
 
+	glog.Info("Retry table=%s type=%s", m.name, m.typ)
 	m.loaded = false
-	m.typ = getElfType(m.path)
+	m.typ = getElfType(m.name, m.path)
 	m.load()
 	return m.table.Resolve(addr)
 }
 
 func (m *ProcModule) findbase(mf *elf.MMapedFile) bool {
-	if mf.FileHeader.Type == delf.ET_EXEC {
-		m.base = 0
+	if m.typ == EXEC {
 		return true
 	}
-	for _, prog := range mf.Progs {
-		if prog.Type == delf.PT_LOAD && (prog.Flags&delf.PF_X != 0) {
-			if uint64(m.procmap.FileOffset) == prog.Off {
-				m.base = m.procmap.StartAddr - prog.Vaddr
-				return true
-			}
+	if m.typ == SO || m.typ == VDSO {
+		var ok bool
+		if m.base, ok = mf.CalcSoBaseOffset(m.procmap); !ok {
+			glog.Warningf("Unable to determine SO base offset for ELF %s", m.path.GetPath())
+			return false
 		}
+		return true
 	}
-	return false
+	return true
 }
 
 func (m *ProcModule) load() {
@@ -83,28 +89,29 @@ func (m *ProcModule) load() {
 			m.table = &emptyTable{}
 		}
 	}()
-
 	if m.loaded || m.typ == UNKNOWN {
 		return
 	}
 	m.loaded = true
 
-	mf, err := elf.NewMMapedFile(m.path.GetPath())
-	if err != nil {
-		glog.Errorf("Failed to open mmaped file %s: %v", m.path.GetPath(), err)
-		return
-	}
-	defer mf.Close()
-	if !m.findbase(mf) {
-		glog.Warningf("Unable to determine base of elf path %s", m.path.GetPath())
-		return
-	}
-
 	if m.typ == PERF_MAP {
+		// TODO (vietanhduong): complete this
 		glog.Info("PERF_MAP is unsupported yet")
 	}
 
 	if m.typ == SO || m.typ == EXEC {
+		mf, err := elf.NewMMapedFile(m.path.GetPath())
+		if err != nil {
+			glog.Errorf("Failed to open mmaped file %s: %v", m.path.GetPath(), err)
+			return
+		}
+		defer mf.Close()
+
+		if !m.findbase(mf) {
+			glog.Warningf("Unable to determine base of elf path %s", m.path.GetPath())
+			return
+		}
+
 		opts := &elf.SymbolOptions{
 			DemangleOpts: m.opts.DemangleType.ToOptions(),
 		}
@@ -127,9 +134,9 @@ func (m *ProcModule) load() {
 
 	if m.typ == VDSO {
 		var err error
-		m.table, err = CreateVDSOResolver(unix.Getpid())
+		m.table, err = buildvDSOResolver()
 		if err != nil {
-			glog.Warning("Failed to create vDSO resolver: %v", err)
+			glog.Warningf("Failed to create vDSO resolver: %v", err)
 		}
 	}
 }
@@ -159,7 +166,7 @@ func (m *ProcModule) findDebugFileViaBuildId(id elf.BuildId) string {
 
 func (m *ProcModule) findDebugFileViaLink(mf *elf.MMapedFile) string {
 	data, err := mf.GetSectionData(".gnu_debuglink")
-	if err != nil || len(data.Data) < 6 {
+	if err != nil || data == nil || len(data.Data) < 6 {
 		return ""
 	}
 	debuglink := cstring(data.Data)
@@ -182,20 +189,30 @@ func (m *ProcModule) findDebugFileViaLink(mf *elf.MMapedFile) string {
 }
 
 func createSymbolTable(mf *elf.MMapedFile, opts *elf.SymbolOptions) SymbolTable {
-	var ret SymbolTable
+	gotbl, _ := mf.NewGoTable(nil)
+
+	if gotbl != nil && gotbl.Index.Entry.Length() > 0 {
+		opts.IgnoreFrom = gotbl.Index.Entry.Get(0)
+		opts.IgnoreTo = gotbl.Index.End
+	}
+
 	symtbl, err := mf.NewSymbolTable(opts)
 	if err != nil {
-		glog.Errorf("Failed to new symbol table: %v", err)
+		glog.V(5).Infof("Failed to create Symbol Table (ELF: %s): %v", mf.FilePath(), err)
+	}
+	if symtbl == nil && gotbl == nil {
+		glog.Errorf("No resolve available for ELF file %s", mf.FilePath())
 		return nil
 	}
-	if ret, err = mf.NewGoTable(symtbl); err != nil {
-		ret = symtbl
+	if gotbl != nil {
+		gotbl.SetFallback(symtbl)
+		return gotbl
 	}
-	return ret
+	return symtbl
 }
 
-func getElfType(path *modulePath) ProcModuleType {
-	mf, err := elf.NewMMapedFile(path.GetPath())
+func getElfType(name string, path *modulePath) ProcModuleType {
+	mf, _ := elf.NewMMapedFile(path.GetPath())
 	if mf != nil {
 		defer mf.Close()
 		if mf.Type == delf.ET_EXEC {
@@ -205,13 +222,12 @@ func getElfType(path *modulePath) ProcModuleType {
 		}
 		return UNKNOWN
 	}
-	glog.V(3).Infof("Failed to open mmaped file %s: %v", path.GetPath(), err)
 
-	if isValidPerfMap(path.GetPath()) {
+	if isValidPerfMap(name) {
 		return PERF_MAP
 	}
 
-	if isVDSO(path.GetPath()) {
+	if isVDSO(name) {
 		return VDSO
 	}
 	return UNKNOWN

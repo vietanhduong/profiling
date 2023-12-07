@@ -3,7 +3,6 @@ package syms
 import (
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/golang/glog"
 	"github.com/vietanhduong/profiling/pkg/proc"
@@ -35,7 +34,7 @@ func NewProcSymbol(pid int, opts *SymbolOptions) (*ProcSymbol, error) {
 	if this.stats, err = proc.ProcStat(pid); err != nil {
 		return nil, fmt.Errorf("proc stats: %w", err)
 	}
-	if err = this.refresh(); err != nil {
+	if err = this.load(); err != nil {
 		return nil, fmt.Errorf("load: %w", err)
 	}
 	return this, nil
@@ -46,13 +45,14 @@ func (s *ProcSymbol) Refresh() {
 		s.ranges[i].module = nil
 	}
 	s.ranges = s.ranges[:0]
-	if err := s.refresh(); err != nil {
+	if err := s.load(); err != nil {
 		glog.Error("Failed to refresh symbol: %v", err)
 	}
 }
 
 func (s *ProcSymbol) Resolve(addr uint64) Symbol {
 	if s.stats.IsStale() {
+		glog.Info("PROC IS STALE")
 		s.Refresh()
 	}
 	if addr == 0xcccccccccccccccc || addr == 0x9090909090909090 {
@@ -76,7 +76,7 @@ func (s *ProcSymbol) Resolve(addr uint64) Symbol {
 	return Symbol{Start: modoffset, Name: sym, Module: r.procmap.Pathname}
 }
 
-func (s *ProcSymbol) refresh() error {
+func (s *ProcSymbol) load() error {
 	maps, err := proc.ParseProcMap(s.pid)
 	if err != nil {
 		return fmt.Errorf("parse proc map: %w", err)
@@ -117,9 +117,6 @@ func (s *ProcSymbol) getModule(r *mrange) *ProcModule {
 }
 
 func (s *ProcSymbol) createModule(m *proc.Map) *ProcModule {
-	if !strings.HasPrefix(m.Pathname, "/") {
-		return nil
-	}
 	path := newModulePath(m.Pathname, s.pid, s.stats.GetRootFD(), m.Memfd && s.pid != -1)
 	return NewProcModule(m.Pathname, m, path, s.opts)
 }
@@ -131,11 +128,11 @@ func (s *ProcSymbol) Cleanup() {
 	clear(s.modules)
 }
 
-func binarySearchRange(e mrange, pc uint64) int {
-	if pc < e.procmap.StartAddr {
+func binarySearchRange(e mrange, addr uint64) int {
+	if addr < e.procmap.StartAddr {
 		return 1
 	}
-	if pc >= e.procmap.EndAddr {
+	if addr >= e.procmap.EndAddr {
 		return -1
 	}
 	return 0

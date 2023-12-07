@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+
+	"github.com/vietanhduong/profiling/pkg/proc"
 )
 
 type MMapedFile struct {
@@ -75,6 +77,15 @@ func (mf *MMapedFile) FindSectionByType(typ elf.SectionType) *elf.SectionHeader 
 		}
 	}
 	return nil
+}
+
+func (mf *MMapedFile) CalcSoBaseOffset(m *proc.Map) (uint64, bool) {
+	text := mf.FindSection(".text")
+	if text == nil {
+		return 0, false
+	}
+	base := (m.StartAddr - uint64(m.FileOffset)) - (text.Addr - text.Offset)
+	return base, true
 }
 
 func (mf *MMapedFile) FilePath() string { return mf.fpath }

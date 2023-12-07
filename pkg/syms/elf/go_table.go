@@ -4,6 +4,7 @@ import (
 	"debug/elf"
 	"fmt"
 
+	"github.com/golang/glog"
 	"github.com/vietanhduong/profiling/pkg/syms/gosym"
 )
 
@@ -43,6 +44,12 @@ func (g *GoTable) resolve(addr uint64) string {
 		return g.resolveSymbol(i)
 	}
 	return ""
+}
+
+func (g *GoTable) SetFallback(fallback FallbackResolver) {
+	if fallback != nil {
+		g.fallback = fallback
+	}
 }
 
 func (g *GoTable) resolveSymbol(index int) string {
@@ -95,6 +102,7 @@ func (mf *MMapedFile) NewGoTable(fallback FallbackResolver) (*GoTable, error) {
 	if fallback == nil {
 		fallback = &emptyFallback{}
 	}
+	glog.V(5).Infof("[Go Table] Total symbol loaded: %d", len(funcs.Name))
 	return &GoTable{
 		Index:         funcs,
 		File:          mf,

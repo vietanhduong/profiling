@@ -14,4 +14,6 @@ func isValidPerfMap(path string) bool {
 	return isPerfMap(path) && unix.Access(path, unix.R_OK) == nil
 }
 
-func isVDSO(path string) bool { return path == "[vdso]" }
+func isVDSO(path string) bool {
+	return path == "[vdso]"
+}

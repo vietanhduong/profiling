@@ -7,6 +7,7 @@ require (
 	github.com/cilium/ebpf v0.12.3
 	github.com/golang/glog v1.2.0
 	github.com/ianlancetaylor/demangle v0.0.0-20231023195312-e2daf7ba7156
+	github.com/samber/lo v1.39.0
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	golang.org/x/sys v0.14.1-0.20231108175955-e4099bfacb8c

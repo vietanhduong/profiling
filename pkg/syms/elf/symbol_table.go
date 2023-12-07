@@ -2,9 +2,9 @@ package elf
 
 import (
 	"debug/elf"
-	"fmt"
 	"sort"
 
+	"github.com/golang/glog"
 	"github.com/ianlancetaylor/demangle"
 	"github.com/vietanhduong/profiling/pkg/syms/gosym"
 )
@@ -23,18 +23,21 @@ type SymbolTable struct {
 func (f *MMapedFile) NewSymbolTable(opts *SymbolOptions) (*SymbolTable, error) {
 	sym, err := f.getSymbols(elf.SHT_SYMTAB, opts)
 	if err != nil {
-		return nil, fmt.Errorf("get symbol section %s: %w", elf.SHT_SYMTAB.String(), err)
+		sym = &sectionSymbols{}
+		glog.Warningf("New Symbol Table: failed to get symbol section %s: %v", elf.SHT_SYMTAB.String(), err)
 	}
 
 	dynsym, err := f.getSymbols(elf.SHT_DYNSYM, opts)
 	if err != nil {
-		return nil, fmt.Errorf("get symbol section %s: %w", elf.SHT_DYNSYM.String(), err)
+		dynsym = &sectionSymbols{}
+		glog.Warningf("New Symbol Table: failed to get symbol section %s: %v", elf.SHT_DYNSYM.String(), err)
 	}
 
 	total := len(dynsym.symbols) + len(sym.symbols)
 	if total == 0 {
 		return nil, nil
 	}
+	glog.V(5).Infof("[Symbol Table] Total symbols loaded: %d", total)
 
 	all := make([]SymbolIndex, 0, total)
 	all = append(all, sym.symbols...)
@@ -51,10 +54,12 @@ func (f *MMapedFile) NewSymbolTable(opts *SymbolOptions) (*SymbolTable, error) {
 		File: f,
 		opts: opts.DemangleOpts,
 	}
-
-	ret.Index.Links = []elf.SectionHeader{
-		f.Sections[sym.data.Header.Link],
-		f.Sections[dynsym.data.Header.Link],
+	ret.Index.Links = make([]elf.SectionHeader, 2)
+	if sym.data != nil {
+		ret.Index.Links[SYMTAB_TYPE] = f.Sections[sym.data.Header.Link]
+	}
+	if dynsym.data != nil {
+		ret.Index.Links[DYNSYM_TYPE] = f.Sections[dynsym.data.Header.Link]
 	}
 	ret.Index.Names = make([]Name, total)
 	ret.Index.Values = gosym.NewPCIndex(total)

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -12,8 +15,10 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/golang/glog"
+	"github.com/samber/lo"
 	"github.com/vietanhduong/profiling/pkg/perf"
 	"github.com/vietanhduong/profiling/pkg/profiler"
+	"github.com/vietanhduong/profiling/pkg/syms"
 )
 
 func main() {
@@ -65,6 +70,25 @@ func main() {
 	}
 	defer ring.Close()
 
+	resolver, err := syms.NewProcSymbol(pid, nil)
+	if err != nil {
+		glog.Errorf("Failed to new symbol resolver with PID %d: %v", pid, err)
+		os.Exit(1)
+	}
+	defer resolver.Cleanup()
+
+	getstack := func(stackid int64) []byte {
+		if stackid < 0 {
+			return nil
+		}
+		res, err := objs.StackTraces.LookupBytes(uint32(stackid))
+		if err != nil {
+			glog.Errorf("Err: Failed to lookup stackid 0x%08x", stackid)
+			return nil
+		}
+		return res
+	}
+
 	go func() {
 		<-stop
 		if err := ring.Close(); err != nil {
@@ -85,6 +109,38 @@ func main() {
 		}
 
 		stack := (*profiler.ProfilerStackT)(unsafe.Pointer(&record.RawSample[0]))
-		glog.Infof("Receiving stack trace from PID: %d", stack.Pid)
+		if stack.Pid == uint32(pid) {
+			if trace := buildStack(getstack(int64(stack.UserStackId)), resolver); trace != "" {
+				glog.V(10).Infof("trace: %s", trace)
+			}
+		}
 	}
+}
+
+func buildStack(stack []byte, resolver *syms.ProcSymbol) string {
+	if len(stack) == 0 {
+		return ""
+	}
+	var stackFrames []string
+	for i := 0; i < 127; i++ {
+		instructionPointerBytes := stack[i*8 : i*8+8]
+		ins := binary.LittleEndian.Uint64(instructionPointerBytes)
+		if ins == 0 {
+			break
+		}
+		sym := resolver.Resolve(ins)
+		var name string
+		if sym.Name != "" {
+			name = sym.Name
+		} else {
+			if sym.Module != "" {
+				name = fmt.Sprintf("%s+%x", sym.Module, sym.Start)
+			} else {
+				name = fmt.Sprintf("%x", ins)
+			}
+		}
+		stackFrames = append(stackFrames, name)
+	}
+	lo.Reverse(stackFrames)
+	return strings.Join(stackFrames, ";")
 }
