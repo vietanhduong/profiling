@@ -50,11 +50,10 @@ func (dt DemangleType) ToOptions() []demangle.Option {
 type ProcModuleType string
 
 const (
-	UNKNOWN  ProcModuleType = "UNKNOWN"
-	EXEC     ProcModuleType = "EXEC"
-	SO       ProcModuleType = "SO"
-	PERF_MAP ProcModuleType = "PERF_MAP"
-	VDSO     ProcModuleType = "VDSO"
+	UNKNOWN ProcModuleType = "UNKNOWN"
+	EXEC    ProcModuleType = "EXEC"
+	SO      ProcModuleType = "SO"
+	VDSO    ProcModuleType = "VDSO"
 )
 
 type Symbol struct {

@@ -81,7 +81,7 @@ func buildVDSOImage(procmap *proc.Map, pid int) string {
 		glog.Warningf("Build vDSO Image: Failed read mem: %v", err)
 		return ""
 	}
-	tmpfile, err := os.Create(fmt.Sprintf("/tmp/profile_%d_vdso_image", pid))
+	tmpfile, err := os.CreateTemp("", fmt.Sprintf("profile_%d_vdso_image_*", pid))
 	if err != nil {
 		glog.Warningf("Build vDSO Image: Failed to create vsdo temp file: %v", err)
 		return ""

@@ -94,11 +94,6 @@ func (m *ProcModule) load() {
 	}
 	m.loaded = true
 
-	if m.typ == PERF_MAP {
-		// TODO (vietanhduong): complete this
-		glog.Info("PERF_MAP is unsupported yet")
-	}
-
 	if m.typ == SO || m.typ == EXEC {
 		mf, err := elf.NewMMapedFile(m.path.GetPath())
 		if err != nil {
@@ -221,10 +216,6 @@ func getElfType(name string, path *modulePath) ProcModuleType {
 			return SO
 		}
 		return UNKNOWN
-	}
-
-	if isValidPerfMap(name) {
-		return PERF_MAP
 	}
 
 	if isVDSO(name) {
