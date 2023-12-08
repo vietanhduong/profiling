@@ -10,11 +10,6 @@ type SymbolTable interface {
 	IsDead() bool
 }
 
-type SymbolResolver interface {
-	SymbolTable
-	Refresh()
-}
-
 type SymbolOptions struct {
 	DemangleType DemangleType
 	UseDebugFile bool
@@ -57,7 +52,7 @@ const (
 )
 
 type Symbol struct {
-	Start  uint64
-	Name   string
-	Module string
+	Start  uint64 `json:"start,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Module string `json:"module,omitempty"`
 }

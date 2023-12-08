@@ -52,7 +52,6 @@ func (s *ProcSymbol) Refresh() {
 
 func (s *ProcSymbol) Resolve(addr uint64) Symbol {
 	if s.stats.IsStale() {
-		glog.Info("PROC IS STALE")
 		s.Refresh()
 	}
 	if addr == 0xcccccccccccccccc || addr == 0x9090909090909090 {

@@ -6,6 +6,7 @@ require (
 	github.com/avvmoto/buf-readerat v0.0.0-20171115124131-a17c8cb89270
 	github.com/cilium/ebpf v0.12.3
 	github.com/golang/glog v1.2.0
+	github.com/google/go-cmp v0.6.0
 	github.com/ianlancetaylor/demangle v0.0.0-20231023195312-e2daf7ba7156
 	github.com/samber/lo v1.39.0
 	github.com/stretchr/testify v1.8.4

@@ -70,12 +70,19 @@ func main() {
 	}
 	defer ring.Close()
 
-	resolver, err := syms.NewProcSymbol(pid, nil)
+	procResolver, err := syms.NewResolver(pid, nil)
 	if err != nil {
 		glog.Errorf("Failed to new symbol resolver with PID %d: %v", pid, err)
 		os.Exit(1)
 	}
-	defer resolver.Cleanup()
+	defer procResolver.Cleanup()
+
+	kernResolver, err := syms.NewResolver(-1, nil)
+	if err != nil {
+		glog.Errorf("Failed to new kernel resolver: %v", err)
+		os.Exit(1)
+	}
+	defer kernResolver.Cleanup()
 
 	getstack := func(stackid int64) []byte {
 		if stackid < 0 {
@@ -110,16 +117,21 @@ func main() {
 
 		stack := (*profiler.ProfilerStackT)(unsafe.Pointer(&record.RawSample[0]))
 		if stack.Pid == uint32(pid) {
-			if trace := buildStack(getstack(int64(stack.UserStackId)), resolver); trace != "" {
-				glog.V(10).Infof("trace: %s", trace)
+			builder := &stackbuilder{}
+			buildStack(builder, getstack(int64(stack.UserStackId)), procResolver)
+			buildStack(builder, getstack(int64(stack.KernelStackId)), kernResolver)
+			if len(builder.stacks) == 0 {
+				continue
 			}
+			lo.Reverse(builder.stacks)
+			glog.V(10).Infof("trace: %s", strings.Join(builder.stacks, ";"))
 		}
 	}
 }
 
-func buildStack(stack []byte, resolver *syms.ProcSymbol) string {
+func buildStack(builder *stackbuilder, stack []byte, resolver syms.Resolver) {
 	if len(stack) == 0 {
-		return ""
+		return
 	}
 	var stackFrames []string
 	for i := 0; i < 127; i++ {
@@ -142,5 +154,13 @@ func buildStack(stack []byte, resolver *syms.ProcSymbol) string {
 		stackFrames = append(stackFrames, name)
 	}
 	lo.Reverse(stackFrames)
-	return strings.Join(stackFrames, ";")
+	for _, s := range stackFrames {
+		builder.append(s)
+	}
 }
+
+type stackbuilder struct {
+	stacks []string
+}
+
+func (sb *stackbuilder) append(stack string) { sb.stacks = append(sb.stacks, stack) }
