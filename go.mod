@@ -21,23 +21,3 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace (
-	github.com/dgraph-io/badger/v2 => github.com/dgraph-io/badger/v2 v2.2007.4
-
-	// Replace memberlist with our fork which includes some fixes that haven't been
-	// merged upstream yet.
-	github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220708130638-bd88e10a3d91
-	github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.45.0
-
-	// Replaced with fork, to allow prefix listing, see https://github.com/simonswine/objstore/commit/84f91ea90e721f17d2263cf479fff801cab7cf27
-	github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20231121154247-84f91ea90e72
-
-	// Changed slices.SortFunc signature, which breaks dependencies:
-	// https://github.com/golang/exp/commit/302865e7556b4ae5de27248ce625d443ef4ad3ed
-	golang.org/x/exp => golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
-	// gopkg.in/yaml.v3
-	// + https://github.com/go-yaml/yaml/pull/691
-	// + https://github.com/go-yaml/yaml/pull/876
-	gopkg.in/yaml.v3 => github.com/colega/go-yaml-yaml v0.0.0-20220720105220-255a8d16d094
-)

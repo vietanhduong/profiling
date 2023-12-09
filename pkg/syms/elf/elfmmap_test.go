@@ -37,11 +37,11 @@ func TestElfSymbolComparison(t *testing.T) {
 			})
 		}
 
-		cmp := func(a, b TestSym) bool {
+		cmp := func(a, b TestSym) int {
 			if a.Start == b.Start {
-				return strings.Compare(a.Name, b.Name) < 0
+				return strings.Compare(a.Name, b.Name)
 			}
-			return a.Start < b.Start
+			return int(a.Start - b.Start)
 		}
 		slices.SortFunc(mySymbols, cmp)
 		slices.SortFunc(genuineSymbols, cmp)

@@ -33,18 +33,18 @@ func GetELFSymbolsFromSymtab(elfFile *elf.File) []TestSym {
 	}
 
 	add(symtab)
-	slices.SortFunc(symbols, func(a, b TestSym) bool {
+	slices.SortFunc(symbols, func(a, b TestSym) int {
 		if a.Start == b.Start {
-			return strings.Compare(a.Name, b.Name) < 0
+			return strings.Compare(a.Name, b.Name)
 		}
-		return a.Start < b.Start
+		return int(a.Start - b.Start)
 	})
 	add(dynsym)
-	slices.SortFunc(symbols, func(a, b TestSym) bool {
+	slices.SortFunc(symbols, func(a, b TestSym) int {
 		if a.Start == b.Start {
-			return strings.Compare(a.Name, b.Name) < 0
+			return strings.Compare(a.Name, b.Name)
 		}
-		return a.Start < b.Start
+		return int(a.Start - b.Start)
 	})
 	return symbols
 }
