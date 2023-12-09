@@ -8,6 +8,7 @@ type SymbolTable interface {
 	Resolve(addr uint64) string
 	Cleanup()
 	IsDead() bool
+	Size() int
 }
 
 type SymbolOptions struct {

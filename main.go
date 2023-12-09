@@ -118,8 +118,8 @@ func main() {
 		stack := (*profiler.ProfilerStackT)(unsafe.Pointer(&record.RawSample[0]))
 		if stack.Pid == uint32(pid) {
 			builder := &stackbuilder{}
-			buildStack(builder, getstack(int64(stack.UserStackId)), procResolver)
-			buildStack(builder, getstack(int64(stack.KernelStackId)), kernResolver)
+			buildStack(builder, "", getstack(int64(stack.UserStackId)), procResolver)
+			buildStack(builder, "[k] ", getstack(int64(stack.KernelStackId)), kernResolver)
 			if len(builder.stacks) == 0 {
 				continue
 			}
@@ -129,7 +129,7 @@ func main() {
 	}
 }
 
-func buildStack(builder *stackbuilder, stack []byte, resolver syms.Resolver) {
+func buildStack(builder *stackbuilder, prefix string, stack []byte, resolver syms.Resolver) {
 	if len(stack) == 0 {
 		return
 	}
@@ -151,7 +151,7 @@ func buildStack(builder *stackbuilder, stack []byte, resolver syms.Resolver) {
 				name = fmt.Sprintf("%x", ins)
 			}
 		}
-		stackFrames = append(stackFrames, name)
+		stackFrames = append(stackFrames, fmt.Sprintf("%s%s", prefix, name))
 	}
 	lo.Reverse(stackFrames)
 	for _, s := range stackFrames {

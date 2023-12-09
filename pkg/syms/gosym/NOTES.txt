@@ -1,0 +1,2 @@
+NOTES:
+  * This package is borrowed from grafana/pyroscope at 80ab1eaf5

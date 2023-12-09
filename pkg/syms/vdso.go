@@ -32,7 +32,7 @@ func buildvDSOResolver() (SymbolTable, error) {
 		return nil, fmt.Errorf("vdso already failed before: %w", vstatus.err)
 	}
 
-	mf, err := elf.NewMMapedFile(vstatus.image)
+	mf, err := elf.NewMMapedElfFile(vstatus.image)
 	if err != nil {
 		return nil, fmt.Errorf("open mmaped filed %s: %w, image, err", vstatus.image, err)
 	}

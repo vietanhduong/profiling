@@ -67,19 +67,20 @@ func (m *ProcModule) Resolve(addr uint64) string {
 	return m.table.Resolve(addr)
 }
 
-func (m *ProcModule) findbase(mf *elf.MMapedFile) bool {
-	if m.typ == EXEC {
+func (m *ProcModule) findbase(mf *elf.MMapedElfFile) bool {
+	if mf.FileHeader.Type == delf.ET_EXEC {
+		m.base = 0
 		return true
 	}
-	if m.typ == SO || m.typ == VDSO {
-		var ok bool
-		if m.base, ok = mf.CalcSoBaseOffset(m.procmap); !ok {
-			glog.Warningf("Unable to determine SO base offset for ELF %s", m.path.GetPath())
-			return false
+	for _, prog := range mf.Progs {
+		if prog.Type == delf.PT_LOAD && (prog.Flags&delf.PF_X != 0) {
+			if uint64(m.procmap.FileOffset) == prog.Off {
+				m.base = m.procmap.StartAddr - prog.Vaddr
+				return true
+			}
 		}
-		return true
 	}
-	return true
+	return false
 }
 
 func (m *ProcModule) load() {
@@ -88,6 +89,7 @@ func (m *ProcModule) load() {
 		if m.table == nil {
 			m.table = &emptyTable{}
 		}
+		glog.V(5).Infof("Loaded symbol table (name=%s path=%s) has size: %d", m.name, m.path.GetPath(), m.table.Size())
 	}()
 	if m.loaded || m.typ == UNKNOWN {
 		return
@@ -95,7 +97,7 @@ func (m *ProcModule) load() {
 	m.loaded = true
 
 	if m.typ == SO || m.typ == EXEC {
-		mf, err := elf.NewMMapedFile(m.path.GetPath())
+		mf, err := elf.NewMMapedElfFile(m.path.GetPath())
 		if err != nil {
 			glog.Errorf("Failed to open mmaped file %s: %v", m.path.GetPath(), err)
 			return
@@ -113,7 +115,7 @@ func (m *ProcModule) load() {
 
 		if m.opts.UseDebugFile {
 			if debugfile := m.findDebugFile(mf); debugfile != "" {
-				debugmf, err := elf.NewMMapedFile(debugfile)
+				debugmf, err := elf.NewMMapedElfFile(debugfile)
 				if err != nil {
 					glog.Errorf("Failed to open mmaped debug file %s: %v", debugfile, err)
 					return
@@ -136,12 +138,9 @@ func (m *ProcModule) load() {
 	}
 }
 
-func (m *ProcModule) findDebugFile(mf *elf.MMapedFile) string {
-	id := mf.BuildId()
-	if id == nil {
-		id = &elf.BuildId{}
-	}
-	if debugfile := m.findDebugFileViaBuildId(*id); debugfile != "" {
+func (m *ProcModule) findDebugFile(mf *elf.MMapedElfFile) string {
+	id, _ := mf.BuildId()
+	if debugfile := m.findDebugFileViaBuildId(id); debugfile != "" {
 		return debugfile
 	}
 	return m.findDebugFileViaLink(mf)
@@ -159,7 +158,7 @@ func (m *ProcModule) findDebugFileViaBuildId(id elf.BuildId) string {
 	return ""
 }
 
-func (m *ProcModule) findDebugFileViaLink(mf *elf.MMapedFile) string {
+func (m *ProcModule) findDebugFileViaLink(mf *elf.MMapedElfFile) string {
 	data, err := mf.GetSectionData(".gnu_debuglink")
 	if err != nil || data == nil || len(data.Data) < 6 {
 		return ""
@@ -183,12 +182,12 @@ func (m *ProcModule) findDebugFileViaLink(mf *elf.MMapedFile) string {
 	return ""
 }
 
-func createSymbolTable(mf *elf.MMapedFile, opts *elf.SymbolOptions) SymbolTable {
+func createSymbolTable(mf *elf.MMapedElfFile, opts *elf.SymbolOptions) SymbolTable {
 	gotbl, _ := mf.NewGoTable(nil)
 
 	if gotbl != nil && gotbl.Index.Entry.Length() > 0 {
-		opts.IgnoreFrom = gotbl.Index.Entry.Get(0)
-		opts.IgnoreTo = gotbl.Index.End
+		opts.FilterFrom = gotbl.Index.Entry.Get(0)
+		opts.FilterTo = gotbl.Index.End
 	}
 
 	symtbl, err := mf.NewSymbolTable(opts)
@@ -207,7 +206,7 @@ func createSymbolTable(mf *elf.MMapedFile, opts *elf.SymbolOptions) SymbolTable 
 }
 
 func getElfType(name string, path *modulePath) ProcModuleType {
-	mf, _ := elf.NewMMapedFile(path.GetPath())
+	mf, _ := elf.NewMMapedElfFile(path.GetPath())
 	if mf != nil {
 		defer mf.Close()
 		if mf.Type == delf.ET_EXEC {

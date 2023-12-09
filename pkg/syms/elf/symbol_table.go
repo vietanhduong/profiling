@@ -2,46 +2,107 @@ package elf
 
 import (
 	"debug/elf"
+	"errors"
+	"fmt"
 	"sort"
 
-	"github.com/golang/glog"
 	"github.com/ianlancetaylor/demangle"
 	"github.com/vietanhduong/profiling/pkg/syms/gosym"
 )
 
-type SymbolTable struct {
-	Index struct {
-		Links  []elf.SectionHeader
-		Names  []Name
-		Values gosym.PCIndex
-	}
-	File *MMapedFile
+// symbols from .symtab, .dynsym
 
-	opts []demangle.Option
+type SymbolIndex struct {
+	Name  Name
+	Value uint64
 }
 
-func (f *MMapedFile) NewSymbolTable(opts *SymbolOptions) (*SymbolTable, error) {
-	sym, err := f.getSymbols(elf.SHT_SYMTAB, opts)
-	if err != nil {
-		sym = &sectionSymbols{}
-		glog.Warningf("New Symbol Table: failed to get symbol section %s: %v", elf.SHT_SYMTAB.String(), err)
+type SectionLinkIndex uint8
+
+var (
+	sectionTypeSym    SectionLinkIndex = 0
+	sectionTypeDynSym SectionLinkIndex = 1
+)
+
+type Name uint32
+
+func NewName(NameIndex uint32, linkIndex SectionLinkIndex) Name {
+	return Name((NameIndex & 0x7fffffff) | uint32(linkIndex)<<31)
+}
+
+func (n *Name) NameIndex() uint32 {
+	return uint32(*n) & 0x7fffffff
+}
+
+func (n *Name) LinkIndex() SectionLinkIndex {
+	return SectionLinkIndex(*n >> 31)
+}
+
+type FlatSymbolIndex struct {
+	Links  []elf.SectionHeader
+	Names  []Name
+	Values gosym.PCIndex
+}
+type SymbolTable struct {
+	Index FlatSymbolIndex
+	File  *MMapedElfFile
+
+	demangleOptions []demangle.Option
+}
+
+func (st *SymbolTable) IsDead() bool {
+	return st.File.err != nil
+}
+
+func (st *SymbolTable) DebugInfo() SymTabDebugInfo {
+	return SymTabDebugInfo{
+		Name: fmt.Sprintf("SymbolTable %p", st),
+		Size: len(st.Index.Names),
+		File: st.File.fpath,
+	}
+}
+
+func (st *SymbolTable) Size() int {
+	return len(st.Index.Names)
+}
+
+func (st *SymbolTable) Refresh() {}
+
+func (st *SymbolTable) DebugString() string {
+	return fmt.Sprintf("SymbolTable{ f = %s , sz = %d }", st.File.FilePath(), st.Index.Values.Length())
+}
+
+func (st *SymbolTable) Resolve(addr uint64) string {
+	if len(st.Index.Names) == 0 {
+		return ""
+	}
+	i := st.Index.Values.FindIndex(addr)
+	if i == -1 {
+		return ""
+	}
+	name, _ := st.symbolName(i)
+	return name
+}
+
+func (st *SymbolTable) Cleanup() { st.File.Close() }
+
+func (f *MMapedElfFile) NewSymbolTable(opt *SymbolOptions) (*SymbolTable, error) {
+	sym, sectionSym, err := f.getSymbols(elf.SHT_SYMTAB, opt)
+	if err != nil && !errors.Is(err, ErrNoSymbols) {
+		return nil, err
 	}
 
-	dynsym, err := f.getSymbols(elf.SHT_DYNSYM, opts)
-	if err != nil {
-		dynsym = &sectionSymbols{}
-		glog.Warningf("New Symbol Table: failed to get symbol section %s: %v", elf.SHT_DYNSYM.String(), err)
+	dynsym, sectionDynSym, err := f.getSymbols(elf.SHT_DYNSYM, opt)
+	if err != nil && !errors.Is(err, ErrNoSymbols) {
+		return nil, err
 	}
-
-	total := len(dynsym.symbols) + len(sym.symbols)
+	total := len(dynsym) + len(sym)
 	if total == 0 {
-		return nil, nil
+		return nil, ErrNoSymbols
 	}
-	glog.V(5).Infof("[Symbol Table] Total symbols loaded: %d", total)
-
-	all := make([]SymbolIndex, 0, total)
-	all = append(all, sym.symbols...)
-	all = append(all, dynsym.symbols...)
+	all := make([]SymbolIndex, 0, total) // todo avoid allocation
+	all = append(all, sym...)
+	all = append(all, dynsym...)
 
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].Value == all[j].Value {
@@ -50,45 +111,39 @@ func (f *MMapedFile) NewSymbolTable(opts *SymbolOptions) (*SymbolTable, error) {
 		return all[i].Value < all[j].Value
 	})
 
-	ret := &SymbolTable{
-		File: f,
-		opts: opts.DemangleOpts,
+	res := &SymbolTable{
+		Index: FlatSymbolIndex{
+			Links: []elf.SectionHeader{
+				f.Sections[sectionSym],    // should be at 0 - SectionTypeSym
+				f.Sections[sectionDynSym], // should be at 1 - SectionTypeDynSym
+			},
+			Names:  make([]Name, total),
+			Values: gosym.NewPCIndex(total),
+		},
+		File:            f,
+		demangleOptions: opt.DemangleOpts,
 	}
-	ret.Index.Links = make([]elf.SectionHeader, 2)
-	if sym.data != nil {
-		ret.Index.Links[SYMTAB_TYPE] = f.Sections[sym.data.Header.Link]
-	}
-	if dynsym.data != nil {
-		ret.Index.Links[DYNSYM_TYPE] = f.Sections[dynsym.data.Header.Link]
-	}
-	ret.Index.Names = make([]Name, total)
-	ret.Index.Values = gosym.NewPCIndex(total)
 	for i := range all {
-		ret.Index.Names[i] = all[i].Name
-		ret.Index.Values.Set(i, all[i].Value)
+		res.Index.Names[i] = all[i].Name
+		res.Index.Values.Set(i, all[i].Value)
 	}
-	return ret, nil
+	return res, nil
 }
 
-func (s *SymbolTable) IsDead() bool { return s.File.IsDead() }
-
-func (s *SymbolTable) Size() int { return len(s.Index.Names) }
-
-func (s *SymbolTable) Resolve(addr uint64) string {
-	if len(s.Index.Names) == 0 {
-		return ""
+func (st *SymbolTable) symbolName(idx int) (string, error) {
+	linkIndex := st.Index.Names[idx].LinkIndex()
+	SectionHeaderLink := &st.Index.Links[linkIndex]
+	NameIndex := st.Index.Names[idx].NameIndex()
+	s, b := st.File.getString(int(NameIndex)+int(SectionHeaderLink.Offset), st.demangleOptions)
+	if !b {
+		return "", fmt.Errorf("elf getString")
 	}
-	if i := s.Index.Values.FindIndex(addr); i != -1 {
-		return s.symbolName(i)
-	}
-	return ""
+	return s, nil
 }
 
-func (s *SymbolTable) Cleanup() { s.File.Close() }
-
-func (s *SymbolTable) symbolName(index int) string {
-	secidx := s.Index.Names[index].SectionIndex()
-	header := &s.Index.Links[secidx]
-	name := s.Index.Names[index].Name()
-	return s.File.getString(int(name)+int(header.Offset), s.opts...)
+type SymTabDebugInfo struct {
+	Name          string `river:"name,attr,optional"`
+	Size          int    `river:"symbol_count,attr,optional"`
+	File          string `river:"file,attr,optional"`
+	LastUsedRound int    `river:"last_used_round,attr,optional"`
 }

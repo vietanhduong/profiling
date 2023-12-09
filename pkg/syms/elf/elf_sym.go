@@ -1,162 +1,149 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+/*
+Package elf implements access to ELF object files.
+
+# Security
+
+This package is not designed to be hardened against adversarial inputs, and is
+outside the scope of https://go.dev/security/policy. In particular, only basic
+validation is done when parsing object files. As such, care should be taken when
+parsing untrusted inputs, as parsing malformed files may consume significant
+resources, or cause panics.
+*/
+
+// Copied from here https://github.com/golang/go/blob/go1.20.5/src/debug/elf/file.go#L585
+// modified to not read symbol names in memory and return []SymbolIndex
+
 package elf
 
 import (
-	"bytes"
 	"debug/elf"
+	"errors"
 	"fmt"
-	"strings"
 	"unsafe"
 
 	"github.com/ianlancetaylor/demangle"
 )
 
 type SymbolOptions struct {
-	DemangleOpts         []demangle.Option
-	IgnoreFrom, IgnoreTo uint64
+	DemangleOpts []demangle.Option
+	// ignore symbols from FilterFrom to FilterTo
+	FilterFrom uint64
+	FilterTo   uint64
 }
 
-func (mf *MMapedFile) getSymbols(styp elf.SectionType, opts *SymbolOptions) (*sectionSymbols, error) {
-	if styp != elf.SHT_DYNSYM && styp != elf.SHT_SYMTAB {
-		return nil, fmt.Errorf("unsupported elf section type %s", styp.String())
-	}
-	switch styp {
-	case elf.SHT_DYNSYM:
-	case elf.SHT_SYMTAB:
-	default:
-	}
-
-	switch mf.Class {
+// todo consider using ReaderAt here, same as in gopcln
+func (f *MMapedElfFile) getSymbols(typ elf.SectionType, opt *SymbolOptions) ([]SymbolIndex, uint32, error) {
+	switch f.Class {
 	case elf.ELFCLASS64:
-		return mf.getSymbols64(styp, opts)
+		return f.getSymbols64(typ, opt)
+
 	case elf.ELFCLASS32:
-		return mf.getSymbols32(styp, opts)
+		return f.getSymbols32(typ, opt)
 	}
-	return nil, fmt.Errorf("unsupported elf class %s", mf.Class.String())
+
+	return nil, 0, errors.New("not implemented")
 }
 
-func (mf *MMapedFile) getSymbols64(styp elf.SectionType, opts *SymbolOptions) (*sectionSymbols, error) {
-	section := mf.FindSectionByType(styp)
-	if section == nil {
-		return nil, fmt.Errorf("not found section %s", styp.String())
-	}
-	sd, err := mf.GetSectionData(section.Name)
-	if err != nil {
-		return nil, fmt.Errorf("get section data: %w", err)
-	}
-	if sd == nil {
-		return nil, fmt.Errorf("no data in section %s", section.Name)
-	}
-	size := int(unsafe.Sizeof(elf.Sym64{}))
-	if len(sd.Data)%size != 0 {
-		return nil, fmt.Errorf("invalid section data size")
-	}
+// ErrNoSymbols is returned by File.Symbols and File.DynamicSymbols
+// if there is no such section in the File.
+var ErrNoSymbols = errors.New("no symbol section")
 
-	var index SectionLinkIndex
-	if styp == elf.SHT_DYNSYM {
-		index = DYNSYM_TYPE
+func (f *MMapedElfFile) getSymbols64(typ elf.SectionType, opt *SymbolOptions) ([]SymbolIndex, uint32, error) {
+	symtabSection := f.sectionByType(typ)
+	if symtabSection == nil {
+		return nil, 0, ErrNoSymbols
+	}
+	var linkIndex SectionLinkIndex
+	if typ == elf.SHT_DYNSYM {
+		linkIndex = sectionTypeDynSym
 	} else {
-		index = SYMTAB_TYPE
+		linkIndex = sectionTypeSym
 	}
 
-	data := sd.Data[size:]
-	symbols := make([]SymbolIndex, len(data)/size)
-	var i int
+	data, err := f.SectionData(symtabSection)
+	if err != nil {
+		return nil, 0, fmt.Errorf("cannot load symbol section: %w", err)
+	}
+
+	if len(data)%elf.Sym64Size != 0 {
+		return nil, 0, errors.New("length of symbol section is not a multiple of Sym64Size")
+	}
+
+	// The first entry is all zeros.
+	data = data[elf.Sym64Size:]
+
+	symbols := make([]SymbolIndex, len(data)/elf.Sym64Size)
+
+	i := 0
 	for len(data) > 0 {
-		raw := data[:size]
-		data = data[size:]
+		raw := data[:elf.Sym64Size]
+		data = data[elf.Sym64Size:]
 		sym := (*elf.Sym64)(unsafe.Pointer(&raw[0]))
+
 		if sym.Value != 0 && sym.Info&0xf == byte(elf.STT_FUNC) {
 			if sym.Name >= 0x7fffffff {
-				return nil, fmt.Errorf("invalid symbol name")
+				return nil, 0, fmt.Errorf("wrong sym name")
 			}
 			pc := sym.Value
-			if pc >= opts.IgnoreFrom && pc < opts.IgnoreTo {
+			if pc >= opt.FilterFrom && pc < opt.FilterTo {
 				continue
 			}
 			symbols[i].Value = pc
-			symbols[i].Name = NewName(sym.Name, index)
+			symbols[i].Name = NewName(sym.Name, linkIndex)
 			i++
 		}
 	}
-	return &sectionSymbols{sd, symbols}, nil
+
+	return symbols[:i], symtabSection.Link, nil
 }
 
-func (mf *MMapedFile) getSymbols32(styp elf.SectionType, opts *SymbolOptions) (*sectionSymbols, error) {
-	section := mf.FindSectionByType(styp)
-	if section == nil {
-		return nil, fmt.Errorf("not found section %s", styp.String())
+func (f *MMapedElfFile) getSymbols32(typ elf.SectionType, opt *SymbolOptions) ([]SymbolIndex, uint32, error) {
+	symtabSection := f.sectionByType(typ)
+	if symtabSection == nil {
+		return nil, 0, ErrNoSymbols
 	}
-	sd, err := mf.GetSectionData(section.Name)
-	if err != nil {
-		return nil, fmt.Errorf("get section data: %w", err)
-	}
-	if sd == nil {
-		return nil, fmt.Errorf("no data in section %s", section.Name)
-	}
-	size := int(unsafe.Sizeof(elf.Sym32{}))
-	if len(sd.Data)%size != 0 {
-		return nil, fmt.Errorf("invalid section data size")
-	}
-
-	var index SectionLinkIndex
-	if styp == elf.SHT_DYNSYM {
-		index = DYNSYM_TYPE
+	var linkIndex SectionLinkIndex
+	if typ == elf.SHT_DYNSYM {
+		linkIndex = sectionTypeDynSym
 	} else {
-		index = SYMTAB_TYPE
+		linkIndex = sectionTypeSym
 	}
 
-	data := sd.Data[size:]
-	symbols := make([]SymbolIndex, len(data)/size)
-	var i int
+	data, err := f.SectionData(symtabSection)
+	if err != nil {
+		return nil, 0, fmt.Errorf("cannot load symbol section: %w", err)
+	}
+
+	if len(data)%elf.Sym32Size != 0 {
+		return nil, 0, errors.New("length of symbol section is not a multiple of Sym64Size")
+	}
+
+	// The first entry is all zeros.
+	data = data[elf.Sym32Size:]
+
+	symbols := make([]SymbolIndex, len(data)/elf.Sym32Size)
+
+	i := 0
 	for len(data) > 0 {
-		raw := data[:size]
-		data = data[size:]
+		raw := data[:elf.Sym32Size]
+		data = data[elf.Sym32Size:]
 		sym := (*elf.Sym32)(unsafe.Pointer(&raw[0]))
 		if sym.Value != 0 && sym.Info&0xf == byte(elf.STT_FUNC) {
 			if sym.Name >= 0x7fffffff {
-				return nil, fmt.Errorf("invalid symbol name")
+				return nil, 0, fmt.Errorf("wrong sym name")
 			}
 			pc := uint64(sym.Value)
-			if pc >= opts.IgnoreFrom && pc < opts.IgnoreTo {
+			if pc >= opt.FilterFrom && pc < opt.FilterTo {
 				continue
 			}
-			symbols[i].Value = pc
-			symbols[i].Name = NewName(sym.Name, index)
+			symbols[i].Name = NewName(sym.Name, linkIndex)
 			i++
 		}
 	}
-	return &sectionSymbols{sd, symbols}, nil
-}
 
-func (mf *MMapedFile) getString(start int, opts ...demangle.Option) string {
-	if err := mf.open(); err != nil {
-		return ""
-	}
-	if s, ok := mf.stringCache[start]; ok {
-		return s
-	}
-	const bufsize = 128
-	var buf [bufsize]byte
-	var builder strings.Builder
-	for i := 0; i < 10; i++ {
-		_, err := mf.f.ReadAt(buf[:], int64(start+i*bufsize))
-		if err != nil {
-			return ""
-		}
-		if index := bytes.IndexByte(buf[:], 0); index >= -0 {
-			builder.Write(buf[:index])
-			s := builder.String()
-			if len(opts) > 0 {
-				s = demangle.Filter(s, opts...)
-			}
-			if mf.stringCache == nil {
-				mf.stringCache = make(map[int]string)
-			}
-			mf.stringCache[start] = s
-			return s
-		} else {
-			builder.Write(buf[:])
-		}
-	}
-	return ""
+	return symbols[:i], symtabSection.Link, nil
 }
