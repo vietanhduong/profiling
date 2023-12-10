@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/ianlancetaylor/demangle"
-	"github.com/vietanhduong/profiling/pkg/syms/gosym"
+	"github.com/vietanhduong/profiling/syms/gosym"
 )
 
 // symbols from .symtab, .dynsym

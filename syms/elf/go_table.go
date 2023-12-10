@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	gosym2 "github.com/vietanhduong/profiling/pkg/syms/gosym"
+	gosym2 "github.com/vietanhduong/profiling/syms/gosym"
 )
 
 type GoTable struct {

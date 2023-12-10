@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	gosym2 "github.com/vietanhduong/profiling/pkg/syms/gosym"
+	gosym2 "github.com/vietanhduong/profiling/syms/gosym"
 	"golang.org/x/exp/slices"
 )
 

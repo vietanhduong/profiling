@@ -6,7 +6,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
-	"github.com/vietanhduong/profiling/pkg/cpuonline"
+	"github.com/vietanhduong/profiling/cpuonline"
 	"golang.org/x/sys/unix"
 )
 

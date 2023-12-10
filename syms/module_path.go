@@ -7,7 +7,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/vietanhduong/profiling/pkg/proc"
+	"github.com/vietanhduong/profiling/proc"
 	"golang.org/x/sys/unix"
 )
 

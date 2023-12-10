@@ -5,7 +5,7 @@ import (
 	"slices"
 
 	"github.com/golang/glog"
-	"github.com/vietanhduong/profiling/pkg/proc"
+	"github.com/vietanhduong/profiling/proc"
 )
 
 type mrange struct {

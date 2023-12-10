@@ -6,8 +6,8 @@ import (
 	"runtime"
 
 	"github.com/golang/glog"
-	"github.com/vietanhduong/profiling/pkg/proc"
-	"github.com/vietanhduong/profiling/pkg/syms/elf"
+	"github.com/vietanhduong/profiling/proc"
+	"github.com/vietanhduong/profiling/syms/elf"
 	"golang.org/x/sys/unix"
 )
 

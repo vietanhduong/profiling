@@ -16,9 +16,9 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/golang/glog"
 	"github.com/samber/lo"
-	"github.com/vietanhduong/profiling/pkg/perf"
-	"github.com/vietanhduong/profiling/pkg/profiler"
-	"github.com/vietanhduong/profiling/pkg/syms"
+	"github.com/vietanhduong/profiling/examples/profiler"
+	"github.com/vietanhduong/profiling/perf"
+	"github.com/vietanhduong/profiling/syms"
 )
 
 func main() {

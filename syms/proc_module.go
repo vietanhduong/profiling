@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/golang/glog"
-	"github.com/vietanhduong/profiling/pkg/proc"
-	"github.com/vietanhduong/profiling/pkg/syms/elf"
+	"github.com/vietanhduong/profiling/proc"
+	"github.com/vietanhduong/profiling/syms/elf"
 )
 
 type ProcModule struct {
