@@ -76,7 +76,7 @@ func (s *ProcSymbol) Resolve(addr uint64) Symbol {
 }
 
 func (s *ProcSymbol) load() error {
-	maps, err := proc.ParseProcMap(s.pid)
+	maps, err := proc.ParseProcMaps(s.pid)
 	if err != nil {
 		return fmt.Errorf("parse proc map: %w", err)
 	}

@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func ParseProcMap(pid int) ([]*Map, error) {
+func ParseProcMaps(pid int) ([]*Map, error) {
 	mapfile := HostProcPath(fmt.Sprintf("%d", pid), "maps")
 	f, err := os.Open(mapfile)
 	if err != nil {
@@ -27,13 +27,21 @@ func ParseProcMap(pid int) ([]*Map, error) {
 		glog.Warning("Failed to parse proc map %s: %v", mapfile, err)
 	}
 
-	if mappath := FindPerfMapPath(pid); mappath != "" {
-		ret = append(ret, &Map{Pathname: mappath})
+	var perfmap string
+	if perfmap = FindPerfMapPath(pid); perfmap != "" && unix.Access(perfmap, unix.R_OK) == nil {
+		ret = append(ret, &Map{Pathname: perfmap})
 	}
 
-	if mappath := fmt.Sprintf("/tmp/perf-%d.map", pid); len(mappath) < 4096 &&
-		!containsPath(ret, mappath) {
-		ret = append(ret, &Map{Pathname: mappath})
+	tmpPerf := fmt.Sprintf("/tmp/perf-%d.map", pid)
+	if perfmap == tmpPerf {
+		return ret, nil
+	}
+
+	// Normally, this will never happen. Because the FindPerfMap should
+	// always return a read file at /tmp/perf-<pid>.map at the host root
+	// dir if posible
+	if unix.Access(tmpPerf, unix.R_OK) == nil {
+		ret = append(ret, &Map{Pathname: tmpPerf})
 	}
 	return ret, nil
 }
@@ -157,13 +165,4 @@ func findMemFdPath(pid int, inode uint64) string {
 		glog.Warning("Failed to walk at dir %s: %v", fdpath, err)
 	}
 	return ret
-}
-
-func containsPath(maps []*Map, path string) bool {
-	for _, m := range maps {
-		if path == m.Pathname {
-			return true
-		}
-	}
-	return false
 }

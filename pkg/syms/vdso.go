@@ -44,7 +44,7 @@ func buildvDSOResolver() (SymbolTable, error) {
 
 func findVDSO() (string, error) {
 	pid := unix.Getpid()
-	maps, err := proc.ParseProcMap(pid)
+	maps, err := proc.ParseProcMaps(pid)
 	if err != nil {
 		return "", fmt.Errorf("parse proc map pid %d: %w", pid, err)
 	}
