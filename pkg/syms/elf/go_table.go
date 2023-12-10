@@ -13,7 +13,7 @@ type GoTable struct {
 	File           *MMapedElfFile
 	gopclnSection  elf.SectionHeader
 	funcNameOffset uint64
-	fallback       FallbackResolver
+	fallback       Table
 }
 
 func (g *GoTable) IsDead() bool {
@@ -72,7 +72,7 @@ var (
 	errGoSymbolsNotFound = errors.New("gosymtab: no go symbols found")
 )
 
-func (f *MMapedElfFile) NewGoTable(fallback FallbackResolver) (*GoTable, error) {
+func (f *MMapedElfFile) NewGoTable(fallback Table) (*GoTable, error) {
 	obj := f
 	var err error
 	text := obj.Section(".text")
@@ -140,7 +140,7 @@ func (f *MMapedElfFile) NewGoTable(fallback FallbackResolver) (*GoTable, error) 
 	}, nil
 }
 
-func (g *GoTable) SetFallback(fallback FallbackResolver) {
+func (g *GoTable) SetFallback(fallback Table) {
 	if fallback != nil {
 		g.fallback = fallback
 	}

@@ -61,6 +61,7 @@ func (it *PCIndex) Get(idx int) uint64 {
 func (it *PCIndex) Is32() bool {
 	return it.i32 != nil
 }
+
 func (it *PCIndex) First() uint64 {
 	if it.i32 != nil {
 		return uint64(it.i32[0])
@@ -106,6 +107,7 @@ func (it *PCIndex) Value(idx int) uint64 {
 	}
 	return it.i64[idx]
 }
+
 func (it *PCIndex) PCIndex64() PCIndex {
 	res := *it
 	if it.i64 != nil {
@@ -117,4 +119,15 @@ func (it *PCIndex) PCIndex64() PCIndex {
 	}
 	res.i32 = nil
 	return res
+}
+
+func (it *PCIndex) AsList() []uint64 {
+	if it.Is32() {
+		ret := make([]uint64, it.Length())
+		for i := range it.i32 {
+			ret[i] = uint64(it.i32[i])
+		}
+		return ret
+	}
+	return it.i64
 }

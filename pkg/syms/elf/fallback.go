@@ -1,6 +1,6 @@
 package elf
 
-type FallbackResolver interface {
+type Table interface {
 	Resolve(addr uint64) string
 	Size() int
 	Cleanup()
