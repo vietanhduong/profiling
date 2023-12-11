@@ -1,23 +1,24 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/cilium/ebpf/btf"
-	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/golang/glog"
 	"github.com/samber/lo"
-	"github.com/vietanhduong/profiling/examples/profiler"
+	"github.com/vietanhduong/profiling/example/profiler"
 	"github.com/vietanhduong/profiling/perf"
+	"github.com/vietanhduong/profiling/ring"
 	"github.com/vietanhduong/profiling/syms"
 )
 
@@ -40,8 +41,8 @@ func main() {
 	}
 
 	// Subscribe to signals for terminating the program.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	var objs profiler.ProfilerObjects
 	if err := profiler.LoadProfilerObjects(&objs, nil); err != nil {
@@ -62,13 +63,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer perfevent.Close()
-
-	ring, err := ringbuf.NewReader(objs.Histogram)
-	if err != nil {
-		glog.Errorf("Failed to open ring buffer: %v", err)
-		os.Exit(1)
-	}
-	defer ring.Close()
 
 	procResolver, err := syms.NewResolver(pid, nil)
 	if err != nil {
@@ -96,35 +90,45 @@ func main() {
 		return res
 	}
 
-	go func() {
-		<-stop
-		if err := ring.Close(); err != nil {
-			glog.Errorf("Failed to close ring buffer: %v", err)
+	callback := func(raw []byte) {
+		stack := (*profiler.ProfilerStackT)(unsafe.Pointer(&raw[0]))
+		if stack.Pid != uint32(pid) {
+			return
 		}
-	}()
+		builder := &stackbuilder{}
+		buildStack(builder, "", getstack(int64(stack.UserStackId)), procResolver)
+		buildStack(builder, "[k] ", getstack(int64(stack.KernelStackId)), kernResolver)
+		if len(builder.stacks) == 0 {
+			return
+		}
+		lo.Reverse(builder.stacks)
+		glog.V(10).Infof("trace: %s", strings.Join(builder.stacks, ";"))
+	}
+
+	reader, err := ring.NewReader(objs.Histogram, ring.Spec{
+		Callback: callback,
+	})
+	if err != nil {
+		glog.Errorf("Failed to open ring buffer: %v", err)
+		os.Exit(1)
+	}
+	defer reader.Close()
 
 	glog.Infof("Waiting for event...")
+	ticker := time.NewTicker(30 * time.Second)
 	for {
-		record, err := ring.Read()
-		if err != nil {
-			if errors.Is(err, ringbuf.ErrClosed) {
-				glog.Infof("Received signal, exiting...")
-				return
+		select {
+		case <-ctx.Done():
+			glog.Infof("Received signal, exiting...")
+			return
+		case <-ticker.C:
+			count, err := reader.Poll(0)
+			if err != nil {
+				glog.Errorf("Failed to open ring buffer: %v", err)
+				os.Exit(1)
 			}
-			glog.Errorf("Failed to read data from ring: %v", err)
-			continue
-		}
-
-		stack := (*profiler.ProfilerStackT)(unsafe.Pointer(&record.RawSample[0]))
-		if stack.Pid == uint32(pid) {
-			builder := &stackbuilder{}
-			buildStack(builder, "", getstack(int64(stack.UserStackId)), procResolver)
-			buildStack(builder, "[k] ", getstack(int64(stack.KernelStackId)), kernResolver)
-			if len(builder.stacks) == 0 {
-				continue
-			}
-			lo.Reverse(builder.stacks)
-			glog.V(10).Infof("trace: %s", strings.Join(builder.stacks, ";"))
+			glog.V(12).Infof("Total polled records: %d", count)
+			glog.Infof("Wait 30s before poll again...")
 		}
 	}
 }
