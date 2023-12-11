@@ -43,20 +43,20 @@ func (s *Stat) RefreshRoot() bool {
 	// Try to get current root and current mount namespace for the process
 	// If an error is raise, that means the process might not exists anymore;
 	// keep the old fd
-	currentRoot, err := os.Readlink(s.rootSymlink)
+	realRoot, err := os.Readlink(s.rootSymlink)
 	if err != nil {
 		return false
 	}
-	currentMountNs, err := os.Readlink(s.mountNsSymlink)
+	realNsMnt, err := os.Readlink(s.mountNsSymlink)
 	if err != nil {
 		return false
 	}
 	// Check if the root FD is up-to-date
-	if s.rootFd != -1 && s.root == currentRoot && s.mountNs == currentMountNs {
+	if s.rootFd != -1 && s.root == realRoot && s.mountNs == realNsMnt {
 		return false
 	}
-	s.root = currentRoot
-	s.mountNs = currentMountNs
+	s.root = realRoot
+	s.mountNs = realNsMnt
 	oldFd := s.rootFd
 	s.rootFd, err = unix.Open(s.rootSymlink, unix.O_PATH, 0)
 	if err != nil {

@@ -14,7 +14,7 @@ type Map struct {
 	DevMajor   uint32
 	DevMinor   uint32
 	Inode      uint64
-	Memfd      bool
+	InMem      bool
 }
 
 func (m *Map) String() string {
@@ -30,7 +30,7 @@ func (m *Map) String() string {
 		m.DevMajor,
 		m.DevMinor,
 		m.Inode,
-		m.Memfd)
+		m.InMem)
 }
 
 type File struct {

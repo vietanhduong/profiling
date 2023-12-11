@@ -11,15 +11,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type modulePath struct {
+type procPath struct {
 	path         string
 	procRootPath string
 	fd           int
 }
 
-func newModulePath(path string, pid, rootfd int, memfd bool) *modulePath {
-	this := &modulePath{}
-	if memfd {
+func newProcPath(path string, pid, rootfd int, inMem bool) *procPath {
+	this := &procPath{}
+	if inMem {
 		this.path = path
 		this.procRootPath = path
 		return this
@@ -31,20 +31,20 @@ func newModulePath(path string, pid, rootfd int, memfd bool) *modulePath {
 	this.fd, err = unix.Openat(rootfd, trimmedPath, unix.O_RDONLY, 0)
 	if err == nil {
 		this.path = proc.HostProcPath(fmt.Sprintf("self/fd/%d", this.fd))
-		runtime.SetFinalizer(this, (*modulePath).Close)
+		runtime.SetFinalizer(this, (*procPath).Close)
 	} else {
 		this.path = this.procRootPath
 	}
 	return this
 }
 
-func (p *modulePath) GetPath() string {
+func (p *procPath) GetPath() string {
 	if p.path == p.procRootPath || unix.Access(p.procRootPath, unix.F_OK) != nil {
 		return p.path
 	}
 	return p.GetRootPath()
 }
 
-func (p *modulePath) GetRootPath() string { return p.procRootPath }
+func (p *procPath) GetRootPath() string { return p.procRootPath }
 
-func (p *modulePath) Close() { syscall.Close(p.fd) }
+func (p *procPath) Close() { syscall.Close(p.fd) }

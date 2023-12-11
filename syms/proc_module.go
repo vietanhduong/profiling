@@ -16,13 +16,13 @@ type ProcModule struct {
 	loaded  bool
 	typ     ProcModuleType
 	table   SymbolTable
-	path    *modulePath
+	path    *procPath
 	opts    *SymbolOptions
 	base    uint64
 	procmap *proc.Map
 }
 
-func NewProcModule(name string, procmap *proc.Map, path *modulePath, opts *SymbolOptions) *ProcModule {
+func NewProcModule(name string, procmap *proc.Map, path *procPath, opts *SymbolOptions) *ProcModule {
 	if opts == nil {
 		opts = defaultSymbolOpts
 	}
@@ -205,7 +205,7 @@ func createSymbolTable(mf *elf.MMapedElfFile, opts *elf.SymbolOptions) SymbolTab
 	return symtbl
 }
 
-func getElfType(name string, path *modulePath) ProcModuleType {
+func getElfType(name string, path *procPath) ProcModuleType {
 	mf, _ := elf.NewMMapedElfFile(path.GetPath())
 	if mf != nil {
 		defer mf.Close()

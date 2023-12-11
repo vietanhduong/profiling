@@ -3,7 +3,6 @@ package proc
 import (
 	"bufio"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -122,7 +121,7 @@ func parseProcMap(f *os.File, pid int) ([]*Map, error) {
 		var pathname string
 		if strings.Contains(m.Pathname, "/memfd:") {
 			if pathname = findMemFdPath(pid, m.Inode); pathname != "" {
-				m.Memfd = true
+				m.InMem = true
 			}
 		}
 		// TODO(vietanhduong): handle zip and apk
@@ -146,23 +145,21 @@ func isFileBacked(mapname string) bool {
 }
 
 func findMemFdPath(pid int, inode uint64) string {
-	var ret string
-	fdpath := HostProcPath(fmt.Sprintf("%d/%d", pid, inode))
-	err := filepath.Walk(fdpath, func(path string, info fs.FileInfo, err error) error {
-		if ret != "" {
-			return nil
-		}
-		stats, ok := info.Sys().(*syscall.Stat_t)
-		if !ok {
-			return nil
-		}
-		if stats.Ino == inode {
-			ret = path
-		}
-		return nil
-	})
+	fdpath := HostProcPath(fmt.Sprintf("%d/fd", pid))
+	entries, err := os.ReadDir(fdpath)
 	if err != nil {
-		glog.Warning("Failed to walk at dir %s: %v", fdpath, err)
+		glog.Warningf("Failed to list directory entry at %s, error: %v", fdpath, err)
+		return ""
 	}
-	return ret
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		if info, _ := ent.Info(); info != nil {
+			if stats, ok := info.Sys().(*syscall.Stat_t); ok && stats.Ino == inode {
+				return filepath.Join(fdpath, ent.Name())
+			}
+		}
+	}
+	return ""
 }

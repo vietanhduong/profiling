@@ -116,7 +116,7 @@ func (s *ProcSymbol) getModule(r *mrange) *ProcModule {
 }
 
 func (s *ProcSymbol) createModule(m *proc.Map) *ProcModule {
-	path := newModulePath(m.Pathname, s.pid, s.stats.GetRootFD(), m.Memfd && s.pid != -1)
+	path := newProcPath(m.Pathname, s.pid, s.stats.GetRootFD(), m.InMem && s.pid != -1)
 	return NewProcModule(m.Pathname, m, path, s.opts)
 }
 

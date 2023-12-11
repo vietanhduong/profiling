@@ -10,18 +10,18 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type perfEvent struct {
+type perfEventEntry struct {
 	fd   int
 	link *link.RawLink
 }
 
 type PerfEvent struct {
-	attached map[int][]*perfEvent
+	attached map[int][]*perfEventEntry
 }
 
 func New() *PerfEvent {
 	return &PerfEvent{
-		attached: make(map[int][]*perfEvent),
+		attached: make(map[int][]*perfEventEntry),
 	}
 }
 
@@ -39,7 +39,7 @@ func (p *PerfEvent) AttachPerfEvent(spec *AttachPerfEventSpec) error {
 		return fmt.Errorf("get cpu online: %w", err)
 	}
 
-	events := make([]*perfEvent, len(cpus))
+	events := make([]*perfEventEntry, len(cpus))
 
 	for _, cpu := range cpus {
 		events[cpu], err = attachPerfEventOnCpu(spec.Prog, int(cpu), spec.SampleRate)
@@ -70,12 +70,12 @@ func (p *PerfEvent) Close() {
 	}
 }
 
-func attachPerfEventOnCpu(prog *ebpf.Program, cpu int, sameRate uint64) (*perfEvent, error) {
+func attachPerfEventOnCpu(prog *ebpf.Program, cpu int, sameRate uint64) (*perfEventEntry, error) {
 	fd, err := openPerfEventCpu(cpu, sameRate)
 	if err != nil {
 		return nil, err
 	}
-	pe := &perfEvent{fd: fd}
+	pe := &perfEventEntry{fd: fd}
 	if pe.link, err = attachPerfEventLink(fd, prog); err == nil {
 		return pe, nil
 	}
@@ -124,7 +124,7 @@ func attachPerfEventIoctl(fd int, prog *ebpf.Program) error {
 	return nil
 }
 
-func (p *perfEvent) Close() {
+func (p *perfEventEntry) Close() {
 	if p == nil {
 		return
 	}
