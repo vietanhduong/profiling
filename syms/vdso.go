@@ -18,11 +18,11 @@ type vdsoStatus struct {
 
 var vstatus *vdsoStatus
 
-func buildvDSOResolver() (SymbolTable, error) {
+func buildVDSOResolver() (SymbolTable, error) {
 	if vstatus == nil {
 		vstatus = &vdsoStatus{}
-		vstatus.image, vstatus.err = findVDSO()
-		runtime.SetFinalizer(vstatus, (*vdsoStatus).Cleanup)
+		vstatus.image, vstatus.err = findVDSO(unix.Getpid())
+		runtime.SetFinalizer(vstatus, func(obj *vdsoStatus) { obj.Cleanup() })
 		if vstatus.err != nil {
 			return nil, vstatus.err
 		}
@@ -42,8 +42,7 @@ func buildvDSOResolver() (SymbolTable, error) {
 	}), nil
 }
 
-func findVDSO() (string, error) {
-	pid := unix.Getpid()
+func findVDSO(pid int) (string, error) {
 	maps, err := proc.ParseProcMaps(pid)
 	if err != nil {
 		return "", fmt.Errorf("parse proc map pid %d: %w", pid, err)
@@ -58,7 +57,7 @@ func findVDSO() (string, error) {
 }
 
 func buildVDSOImage(procmap *proc.Map, pid int) string {
-	if !isVDSO(procmap.Pathname) {
+	if !proc.IsVDSO(procmap.Pathname) {
 		return ""
 	}
 

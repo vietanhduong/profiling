@@ -83,14 +83,6 @@ func FindPerfMapNStgid(pid int) int {
 	return nstgid
 }
 
-func IsPerfMap(path string) bool {
-	return strings.HasSuffix(path, ".map")
-}
-
-func IsValidPerfMap(path string) bool {
-	return IsPerfMap(path) && unix.Access(path, unix.R_OK) == nil
-}
-
 func parseProcMap(f *os.File, pid int) ([]*Map, error) {
 	var ret []*Map
 	for {

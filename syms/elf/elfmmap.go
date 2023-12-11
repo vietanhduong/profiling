@@ -49,7 +49,7 @@ func NewMMapedElfFile(fpath string) (*MMapedElfFile, error) {
 	res.Progs = progs
 	res.Sections = sections
 
-	runtime.SetFinalizer(res, (*MMapedElfFile).Finalize)
+	runtime.SetFinalizer(res, func(obj *MMapedElfFile) { obj.Finalize() })
 	return res, nil
 }
 

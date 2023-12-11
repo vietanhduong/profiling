@@ -31,7 +31,7 @@ func newProcPath(path string, pid, rootfd int, inMem bool) *procPath {
 	this.fd, err = unix.Openat(rootfd, trimmedPath, unix.O_RDONLY, 0)
 	if err == nil {
 		this.path = proc.HostProcPath(fmt.Sprintf("self/fd/%d", this.fd))
-		runtime.SetFinalizer(this, (*procPath).Close)
+		runtime.SetFinalizer(this, func(obj *procPath) { obj.Close() })
 	} else {
 		this.path = this.procRootPath
 	}

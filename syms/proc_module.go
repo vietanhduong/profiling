@@ -62,7 +62,6 @@ func (m *ProcModule) Resolve(addr uint64) string {
 
 	glog.Info("Retry table=%s type=%s", m.name, m.typ)
 	m.loaded = false
-	m.typ = getElfType(m.name, m.path)
 	m.load()
 	return m.table.Resolve(addr)
 }
@@ -131,7 +130,7 @@ func (m *ProcModule) load() {
 
 	if m.typ == VDSO {
 		var err error
-		m.table, err = buildvDSOResolver()
+		m.table, err = buildVDSOResolver()
 		if err != nil {
 			glog.Warningf("Failed to create vDSO resolver: %v", err)
 		}
@@ -206,6 +205,10 @@ func createSymbolTable(mf *elf.MMapedElfFile, opts *elf.SymbolOptions) SymbolTab
 }
 
 func getElfType(name string, path *procPath) ProcModuleType {
+	if proc.IsVDSO(name) {
+		return VDSO
+	}
+
 	mf, _ := elf.NewMMapedElfFile(path.GetPath())
 	if mf != nil {
 		defer mf.Close()
@@ -214,12 +217,8 @@ func getElfType(name string, path *procPath) ProcModuleType {
 		} else if mf.Type == delf.ET_DYN {
 			return SO
 		}
-		return UNKNOWN
 	}
 
-	if isVDSO(name) {
-		return VDSO
-	}
 	return UNKNOWN
 }
 
