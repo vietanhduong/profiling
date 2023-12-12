@@ -24,7 +24,11 @@ import (
 
 func main() {
 	var pid int
-	flag.IntVar(&pid, "pid", -1, "Target process id")
+	var sampleRate int
+	var pollPeriod time.Duration
+	flag.IntVar(&pid, "pid", -1, "Target observe Process ID")
+	flag.IntVar(&sampleRate, "sample-rate", 49, "Sample rate (unit Hz). Should be 49, 99.")
+	flag.DurationVar(&pollPeriod, "poll-period", 30*time.Second, "The duration between polling data from epoll.")
 	flag.Parse()
 
 	if pid == -1 {
@@ -56,7 +60,7 @@ func main() {
 	perfevent := perf.New()
 	err := perfevent.AttachPerfEvent(&perf.AttachPerfEventSpec{
 		Prog:       objs.DoPerfEvent,
-		SampleRate: 11,
+		SampleRate: uint64(sampleRate),
 	})
 	if err != nil {
 		glog.Errorf("Failed to attach perf event: %v", err)
@@ -115,7 +119,7 @@ func main() {
 	defer reader.Close()
 
 	glog.Infof("Waiting for event...")
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(pollPeriod)
 	for {
 		select {
 		case <-ctx.Done():

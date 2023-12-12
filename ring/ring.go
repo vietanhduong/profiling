@@ -13,6 +13,7 @@ import (
 
 var emptycb Callback = func([]byte) {}
 
+// This can be remove after this PR is merged https://github.com/cilium/ebpf/pull/1266
 type RingBuffer struct {
 	reader  *ringbuf.Reader
 	cb      Callback
